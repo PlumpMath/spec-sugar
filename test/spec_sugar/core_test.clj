@@ -17,6 +17,7 @@
       '[x]
       '[x :- :a]
       '[x :-])))
+
 (deftest maybe-typed-args
   (testing "We can parse arguments that are typed"
     (are [x] (s/valid? ::ss/maybe-typed-args x)
@@ -41,8 +42,7 @@
     (are [x] (s/valid? ::ss/defn-args x)
       '(add [x y] (+ x y))
       '(add "with-doc" [x y] (+ x y))
-      '(add ([x y] (+ x y)) ([x y z] (+ x y z)))
-      ))
+      '(add ([x y] (+ x y)) ([x y z] (+ x y z)))))
   (testing "and one with optional types"
     (are [x] (s/valid? ::ss/defn-args x)
       '(add :- integer?
@@ -66,5 +66,49 @@
             "docstring"
             [x :- ::int y :- integer?]
             (+ x y))
+      '(add :- integer?
+            "docstring"
+            ([x :- ::int y :- integer?]
+             (+ x y))
+            ([x :- ::int y c]
+             (+ x y)))
+      '(add :- integer?
+            "docstring"
+            ([x :- ::int y :- integer?]
+             (+ x y))))))
 
-      )))
+(deftest untype
+  (testing "we can remove the types of any definitions"
+    (are [x y] (= y (s/unform ::ss/defn-args (ss/untype-all (s/conform ::ss/defn-args x))))
+      '(add :- integer?
+            [x :- ::int y]
+            (+ x y))
+      '(add [x y] (+ x y))
+
+      '(add
+        [x :- ::int y]
+        (+ x y))
+      '(add [x y] (+ x y))
+
+      '(add :- integer?
+            [x y]
+            (+ x y))
+      '(add [x y] (+ x y))
+
+      '(add :- integer?
+            "docstring"
+            [x :- ::int y]
+            (+ x y))
+      '(add "docstring" [x y] (+ x y))
+
+      '(add
+        "docstring"
+        [x :- ::int y]
+        (+ x y))
+      '(add "docstring" [x y] (+ x y))
+
+      '(add :- integer?
+            "docstring"
+            [x :- ::int y :- integer?]
+            (+ x y))
+      '(add "docstring" [x y] (+ x y)))))
