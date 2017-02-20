@@ -112,3 +112,45 @@
             [x :- ::int y :- integer?]
             (+ x y))
       '(add "docstring" [x y] (+ x y)))))
+
+(deftest collect-types
+  (testing "We can extract the types from the form"
+    (are [x y] (= y (ss/collect-types (s/conform ::ss/defn-args x)))
+      '(add :- integer?
+            [x :- ::int y]
+            (+ x y))
+      '{::ss/ret integer?
+        ::ss/args [[::int any?]]}
+
+      '(add
+        [x :- ::int y]
+        (+ x y))
+      '{::ss/ret any?
+        ::ss/args [[::int any?]]}
+
+      '(add :- integer?
+            [x y]
+            (+ x y))
+      '{::ss/ret integer?
+        ::ss/args [[any? any?]]}
+
+      '(add :- integer?
+            "docstring"
+            [x :- ::int y]
+            (+ x y))
+      '{::ss/ret integer?
+        ::ss/args [[::int any?]]}
+
+      '(add
+        "docstring"
+        [x :- ::int y]
+        (+ x y))
+      '{::ss/ret any?
+        ::ss/args [[::int any?]]}
+
+      '(add :- integer?
+            "docstring"
+            [x :- ::int y :- integer?]
+            (+ x y))
+      '{::ss/ret integer?
+        ::ss/args [[::int integer?]]})))

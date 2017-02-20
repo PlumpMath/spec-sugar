@@ -22,8 +22,7 @@
 (defn is-spec?
   "returns true if spec-or-k is a spec, predicate, regex or resolvable kw/sym"
   [spec-or-k]
-  (boolean (or (and (ident? spec-or-k)
-                    (and (keyword? spec-or-k) (some? (namespace spec-or-k))))
+  (boolean (or (and (ident? spec-or-k) (qualified-keyword? spec-or-k))
                (s/spec? spec-or-k)
                (s/regex? spec-or-k)
                (symbol? spec-or-k)
@@ -106,37 +105,60 @@
                 :else %)
              all-args))
 
+(s/def ::ret is-spec?)
+
+(s/def ::args
+  (s/coll-of (s/coll-of is-spec? :kind vector? :into [])
+             :kind vector? :into []))
+
+(s/fdef collect-types
+        :ret (s/keys :req [::ret ::args])
+        :args any?)
+
+(defn collect-types
+  "Walks a conformed value and extracts all types it finds"
+  [all-args]
+  (let [types (atom {::ret 'any?
+                     ::args []})]
+    (w/prewalk #(cond
+                  (and (map? %) (contains? % :args))
+                  (do
+                    (swap! types (fn [t]
+                                   (update t ::args conj (mapv (fn [arg]
+                                                                 (case (first arg)
+                                                                   :typed (:type (second arg))
+                                                                   :untyped 'any?))
+                                                               (:args %)))))
+                    %)
+
+                  (and (map? %) (contains? % :ret-spec))
+                  (do
+                    (swap! types (fn [t]
+                                   (assoc t ::ret (:ret-spec %))))
+                    %)
+
+                  :else %)
+               all-args)
+    @types))
+
 (s/fdef defns
         :ret any?
         :args ::defn-args)
 
 (defmacro defns [& args]
-  (let [parsed-args (s/conform ::defn-args args)]
-    ;; XXX shuold collect the types and do something with them
-    (remove nil?
-            (list 'clojure.core/defn
-                  (:name parsed-args)
-                  (:docstring parsed-args)
-                  (:meta parsed-args)
-                  (s/unform ::bodies (untype-all (:bs parsed-args)))))))
-
-(comment
-
-  (s/conform
-   ::cs/defn-args
-
-   ['foo "fasdf" '[x] '(+ x 1)]
-   )
-
-  (s/def ::int integer?)
-
-  (defns add [x y]
-    (+ x y))
-
-  (defns add :- integer?
-    "A docstring"
-    [x ;; nothing
-     y :- ::int]
-    (+ x y))
-
-  )
+  (let [parsed-args (s/conform ::defn-args args)
+        types (collect-types parsed-args)
+        new-kw (fn [] (keyword (gensym)))]
+    (list
+     `do
+     (list 'clojure.spec/fdef (:name parsed-args)
+           :ret (::ret types)
+           :args `(s/or ~@(mapcat (fn [ts]
+                                    [(new-kw) `(s/cat ~@(mapcat (fn [t] [(new-kw) t]) ts))])
+                                  (::args types))))
+     (remove nil?
+             (list 'clojure.core/defn
+                   (:name parsed-args)
+                   (:docstring parsed-args)
+                   (:meta parsed-args)
+                   (s/unform ::bodies (untype-all (:bs parsed-args))))))))
